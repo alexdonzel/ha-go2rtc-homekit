@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["patches/**", "extras/**", "tools/**", "testbuild.json"]
+    paths: ["patches/**", "extras/**", "tools/**", "testbuild.json", "go2rtc.ref"]
 
 permissions:
   contents: write
@@ -22,6 +22,10 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
 
       - uses: actions/setup-python@v5
         with:
@@ -43,6 +47,8 @@ jobs:
           last=$(git tag --list "$tag.*" --sort=-v:refname | head -n1)
           build=$(( ${last##*.} + 1 ))
           python3 tools/build.py --tag "$tag" --build "$build"
+          # Record the go2rtc build, so a change to it counts as a change
+          cp go2rtc.ref custom_components/go2rtc/go2rtc.ref
           git add --intent-to-add custom_components
           # Ignore the version bump itself when deciding whether anything changed
           if git diff --quiet -I '"version":' -- custom_components hacs.json \
@@ -57,6 +63,29 @@ jobs:
         if: steps.build.outputs.changed == 'true'
         run: python3 -m compileall -q custom_components
 
+      - name: Build go2rtc
+        if: steps.build.outputs.changed == 'true'
+        run: |
+          read -r repo ref < go2rtc.ref
+          git clone --quiet --filter=blob:none "https://github.com/$repo" build/go2rtc
+          git -C build/go2rtc checkout --quiet "$ref"
+          for target in x86_64:amd64 aarch64:arm64; do
+            machine=${target%%:*} goarch=${target##*:}
+            (cd build/go2rtc && CGO_ENABLED=0 GOOS=linux GOARCH=$goarch \
+              go build -ldflags "-s -w" -trimpath -o "../bin/$machine/go2rtc")
+          done
+          ./build/bin/x86_64/go2rtc -version
+
+      - name: Package
+        if: steps.build.outputs.changed == 'true'
+        run: |
+          mkdir -p dist/pkg
+          cp -r custom_components/go2rtc/. dist/pkg/
+          cp -r build/bin dist/pkg/bin
+          cp build/go2rtc/LICENSE dist/pkg/bin/LICENSE-go2rtc
+          (cd dist/pkg && zip -qr ../go2rtc.zip .)
+          ls -l dist/go2rtc.zip
+
       - name: Commit and release
         if: steps.build.outputs.changed == 'true'
         run: |
@@ -68,4 +97,5 @@ jobs:
           git tag "$version"
           git push origin HEAD "$version"
           gh release create "$version" --title "$version" \
-            --notes "Test build for Home Assistant ${{ steps.release.outputs.tag }}."
+            --notes "Test build for Home Assistant ${{ steps.release.outputs.tag }}, with go2rtc from $(cat go2rtc.ref)." \
+            dist/go2rtc.zip
