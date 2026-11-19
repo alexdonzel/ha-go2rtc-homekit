@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["patches/**", "extras/**", "tools/**", "testbuild.json", "go2rtc.ref"]
+    paths: ["patches/**", "extras/**", "tools/**", "testbuild.json", ".github/workflows/build.yml", "go2rtc.ref"]
 
 permissions:
   contents: write
