@@ -52,9 +52,9 @@ jobs:
           # Record the go2rtc build, so a change to it counts as a change
           cp go2rtc.ref custom_components/go2rtc/go2rtc.ref
           git add --intent-to-add custom_components
-          # Ignore the version bump itself when deciding whether anything changed
-          if git diff --quiet -I '"version":' -- custom_components hacs.json \
-              && [ -n "$last" ]; then
+          # Compare with the last release, ignoring the version bump itself
+          if [ -n "$last" ] \
+              && git diff --quiet -I '"version":' "$last" -- custom_components hacs.json; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -97,7 +97,7 @@ jobs:
           git add custom_components hacs.json
           git commit -m "Build $version for Home Assistant ${{ steps.release.outputs.tag }}"
           git tag "$version"
-          git push origin HEAD "$version"
+          git push --atomic origin HEAD "$version"
           gh release create "$version" --title "$version" \
             --notes "Test build for Home Assistant ${{ steps.release.outputs.tag }}, with go2rtc from $(cat go2rtc.ref)." \
             dist/go2rtc.zip
