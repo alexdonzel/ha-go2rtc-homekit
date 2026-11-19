@@ -1,0 +1,10 @@
+--- a/__init__.py
++++ b/__init__.py
+@@ -1,5 +1,7 @@
+ """The go2rtc component."""
+ 
++from . import _testbuild  # noqa: F401  # isort: skip  # TEST BUILD ONLY, see _testbuild.py
++
+ from dataclasses import dataclass
+ import logging
+ from secrets import token_hex

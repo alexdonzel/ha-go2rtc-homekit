@@ -1,0 +1,21 @@
+diff --git a/server.py b/server.py
+index 7533d3dc..284a0b30 100644
+--- a/server.py
++++ b/server.py
+@@ -61,6 +61,7 @@ _APP_MODULES = (
+     "api",
+     "exec",  # Execution module for ffmpeg
+     "ffmpeg",
++    "homekit",  # homekit:// stream source for HomeKit cameras
+     "http",
+     "mjpeg",
+     "onvif",
+@@ -111,7 +112,7 @@ _LOG_LEVEL_MAP = {
+ # includes it yet (v1.9.14 is the newest). It does not touch query parameters.
+ _URL_USERINFO = re.compile(r"://[^/?#\s@]+@")
+ _URL_CREDENTIAL_QUERY = re.compile(
+-    r"([?&](?:auth|user|password)=)[^&\s]+", re.IGNORECASE
++    r"([?&](?:auth|user|password|client_private)=)[^&\s]+", re.IGNORECASE
+ )
+ 
+ 
