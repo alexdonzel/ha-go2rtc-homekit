@@ -1,0 +1,21 @@
+{
+  "domain": "go2rtc",
+  "name": "go2rtc",
+  "codeowners": [
+    "@alexdonzel"
+  ],
+  "config_flow": false,
+  "dependencies": [
+    "camera"
+  ],
+  "documentation": "https://github.com/alexdonzel/ha-go2rtc-homekit",
+  "integration_type": "system",
+  "iot_class": "local_polling",
+  "quality_scale": "internal",
+  "requirements": [
+    "go2rtc-client==0.4.0"
+  ],
+  "single_config_entry": true,
+  "version": "2026.11.2.1",
+  "issue_tracker": "https://github.com/alexdonzel/ha-go2rtc-homekit/issues"
+}
