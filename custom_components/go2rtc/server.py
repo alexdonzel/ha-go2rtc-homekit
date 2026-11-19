@@ -13,6 +13,7 @@ from go2rtc_client import Go2RtcRestClient
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
+from . import _testbuild
 from .const import HA_MANAGED_API_PORT, HA_MANAGED_URL
 from .util import get_go2rtc_unix_socket_path
 
@@ -172,6 +173,8 @@ def _create_temp_file(
                 password=password,
             ).encode()
         )
+        # TEST BUILD ONLY: talk-back settings, see _testbuild.py
+        file.write(_testbuild.talkback_config().encode())
         return file.name
 
 

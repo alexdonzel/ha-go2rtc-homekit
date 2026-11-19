@@ -283,6 +283,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: Go2RtcConfigEntry) -> N
 
 async def _get_binary(hass: HomeAssistant) -> str | None:
     """Return the binary path if found."""
+    # TEST BUILD ONLY: prefer the go2rtc build shipped with it, see _testbuild.py
+    if binary := await hass.async_add_executor_job(_testbuild.bundled_go2rtc):
+        return binary
     return await hass.async_add_executor_job(shutil.which, "go2rtc")
 
 
