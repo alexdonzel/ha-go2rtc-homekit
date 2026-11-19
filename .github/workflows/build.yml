@@ -85,7 +85,7 @@ jobs:
           cp -r custom_components/go2rtc/. dist/pkg/
           cp -r build/bin dist/pkg/bin
           cp build/go2rtc/LICENSE dist/pkg/bin/LICENSE-go2rtc
-          (cd dist/pkg && zip -qr ../go2rtc.zip .)
+          (cd dist/pkg && zip -qr ../go2rtc.zip . -x '*__pycache__*')
           ls -l dist/go2rtc.zip
 
       - name: Commit and release
