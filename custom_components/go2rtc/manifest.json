@@ -16,6 +16,6 @@
     "go2rtc-client==0.4.0"
   ],
   "single_config_entry": true,
-  "version": "2026.11.2.1",
+  "version": "2026.11.2.2",
   "issue_tracker": "https://github.com/alexdonzel/ha-go2rtc-homekit/issues"
 }
