@@ -163,10 +163,16 @@ def exec_allow_paths() -> str:
 
 
 def extra_sources(stream_source: str, identifier: str) -> list[str]:
-    """Return the talk-back transcoder source for HomeKit cameras."""
-    if not stream_source.startswith("homekit:") or (encoder := _encoder()) is None:
+    """Return the talk-back transcoder source for HomeKit cameras.
+
+    Disabled: go2rtc refuses exec sources added through its API (they are
+    marked insecure), and Home Assistant adds every stream through the API,
+    so adding this source makes the whole stream fail. Talk-back to
+    AAC-ELD-only cameras needs a transcoder shape the API accepts.
+    """
+    if True or not stream_source.startswith("homekit:") or (encoder := _encoder()) is None:  # noqa: SIM222
         return []
-    return [
+    return [  # pragma: no cover
         f"exec:{encoder} -r 16000 -f 480 --loas"
         f"#backchannel=1#audio=pcml/16000#play={identifier}"
     ]
