@@ -1,0 +1,48 @@
+diff --git a/__init__.py b/__init__.py
+index f37e942..e85fc0e 100644
+--- a/__init__.py
++++ b/__init__.py
+@@ -285,6 +285,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: Go2RtcConfigEntry) -> N
+ 
+ async def _get_binary(hass: HomeAssistant) -> str | None:
+     """Return the binary path if found."""
++    # TEST BUILD ONLY: prefer the go2rtc build shipped with it, see _testbuild.py
++    if binary := await hass.async_add_executor_job(_testbuild.bundled_go2rtc):
++        return binary
+     return await hass.async_add_executor_job(shutil.which, "go2rtc")
+ 
+ 
+@@ -478,6 +481,9 @@ class WebRTCProvider(CameraWebRTCProvider):
+                 f"ffmpeg:{get_camera_identifier(camera)}#audio=aac#query=log_level=debug"
+             )
+ 
++        # TEST BUILD ONLY: talk-back transcoder, see _testbuild.py
++        sources += _testbuild.extra_sources(stream_source, get_camera_identifier(camera))
++
+         streams = await self._rest_client.streams.list()
+         identifier = get_camera_identifier(camera)
+ 
+diff --git a/server.py b/server.py
+index 0f1df11..87f6567 100644
+--- a/server.py
++++ b/server.py
+@@ -13,6 +13,7 @@ from go2rtc_client import Go2RtcRestClient
+ from homeassistant.core import HomeAssistant
+ from homeassistant.exceptions import HomeAssistantError
+ 
++from . import _testbuild
+ from .const import HA_MANAGED_API_PORT, HA_MANAGED_RTSP_PORT, HA_MANAGED_URL
+ from .util import get_go2rtc_unix_socket_path
+ 
+@@ -171,7 +172,10 @@ def _create_temp_file(
+                 username=username,
+                 password=password,
+                 rtsp_port=HA_MANAGED_RTSP_PORT,
+-            ).encode()
++            )
++            # TEST BUILD ONLY: allow the talk-back encoder, see _testbuild.py
++            .replace("    - ffmpeg\n", "    - ffmpeg\n" + _testbuild.exec_allow_paths())
++            .encode()
+         )
+         return file.name
+ 
