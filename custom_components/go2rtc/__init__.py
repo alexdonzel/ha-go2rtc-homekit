@@ -483,9 +483,6 @@ class WebRTCProvider(CameraWebRTCProvider):
                 f"ffmpeg:{get_camera_identifier(camera)}#audio=aac#query=log_level=debug"
             )
 
-        # TEST BUILD ONLY: talk-back transcoder, see _testbuild.py
-        sources += _testbuild.extra_sources(stream_source, get_camera_identifier(camera))
-
         streams = await self._rest_client.streams.list()
         identifier = get_camera_identifier(camera)
 

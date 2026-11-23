@@ -172,11 +172,10 @@ def _create_temp_file(
                 username=username,
                 password=password,
                 rtsp_port=HA_MANAGED_RTSP_PORT,
-            )
-            # TEST BUILD ONLY: allow the talk-back encoder, see _testbuild.py
-            .replace("    - ffmpeg\n", "    - ffmpeg\n" + _testbuild.exec_allow_paths())
-            .encode()
+            ).encode()
         )
+        # TEST BUILD ONLY: talk-back transcoder, see _testbuild.py
+        file.write(_testbuild.transcode_config().encode())
         return file.name
 
 
