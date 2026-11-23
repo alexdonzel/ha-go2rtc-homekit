@@ -119,12 +119,13 @@ if not hasattr(CameraWebRTCProvider, "async_get_stream_source"):
     Camera.async_create_stream = _async_create_stream  # type: ignore[method-assign]
 
 
-# Talk-back to AAC-ELD-only HomeKit cameras (e.g. Aqara G410) goes through
-# go2rtc's exec transcoder and an AAC-ELD encoder writing LOAS (eld-enc
-# --loas, from the separate ha-fdk-aac-eld package). It needs the go2rtc build
-# shipped in bin/<machine>/ of this test build. Both are optional: without
-# them cameras stream without talk-back (or with Opus talk-back, if the
-# camera supports Opus).
+# Talk-back to AAC-ELD-only HomeKit cameras (e.g. Aqara G410) goes through a
+# go2rtc transcoder: an AAC-ELD encoder writing LOAS (eld-enc --loas, from the
+# separate ha-fdk-aac-eld package), named in go2rtc's config. go2rtc uses it
+# automatically when a microphone's codec matches nothing the camera takes.
+# It needs the go2rtc build shipped in bin/<machine>/ of this test build. Both
+# are optional: without them cameras stream without talk-back (or with Opus
+# talk-back, if the camera supports Opus).
 
 _COMPONENTS = Path(__file__).parent.parent
 
@@ -155,24 +156,9 @@ def _encoder() -> str | None:
     )
 
 
-def exec_allow_paths() -> str:
-    """Return extra exec allow_paths lines for go2rtc's config."""
+def transcode_config() -> str:
+    """Return go2rtc config naming the AAC-ELD transcoder, or "" without it."""
     if (encoder := _encoder()) is None:
         return ""
-    return f"    - {json.dumps(encoder)}\n"
-
-
-def extra_sources(stream_source: str, identifier: str) -> list[str]:
-    """Return the talk-back transcoder source for HomeKit cameras.
-
-    Disabled: go2rtc refuses exec sources added through its API (they are
-    marked insecure), and Home Assistant adds every stream through the API,
-    so adding this source makes the whole stream fail. Talk-back to
-    AAC-ELD-only cameras needs a transcoder shape the API accepts.
-    """
-    if True or not stream_source.startswith("homekit:") or (encoder := _encoder()) is None:  # noqa: SIM222
-        return []
-    return [  # pragma: no cover
-        f"exec:{encoder} -r 16000 -f 480 --loas"
-        f"#backchannel=1#audio=pcml/16000#play={identifier}"
-    ]
+    source = f"{encoder} -r 16000 -f 480 --loas#audio=pcml/16000#output=eld/16000"
+    return f"\ntranscode:\n  eld: {json.dumps(source)}\n"
