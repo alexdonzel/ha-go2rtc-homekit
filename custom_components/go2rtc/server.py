@@ -14,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
 from . import _testbuild
-from .const import HA_MANAGED_API_PORT, HA_MANAGED_URL
+from .const import HA_MANAGED_API_PORT, HA_MANAGED_RTSP_PORT, HA_MANAGED_URL
 from .util import get_go2rtc_unix_socket_path
 
 _LOGGER = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ exec:
     - ffmpeg
 
 rtsp:
-  listen: "127.0.0.1:18554"
+  listen: "127.0.0.1:{rtsp_port}"
 
 webrtc:
   listen: ":18555/tcp"
@@ -171,10 +171,12 @@ def _create_temp_file(
                 api_allow_paths=_format_list_for_yaml(api_paths),
                 username=username,
                 password=password,
-            ).encode()
+                rtsp_port=HA_MANAGED_RTSP_PORT,
+            )
+            # TEST BUILD ONLY: allow the talk-back encoder, see _testbuild.py
+            .replace("    - ffmpeg\n", "    - ffmpeg\n" + _testbuild.exec_allow_paths())
+            .encode()
         )
-        # TEST BUILD ONLY: talk-back settings, see _testbuild.py
-        file.write(_testbuild.talkback_config().encode())
         return file.name
 
 

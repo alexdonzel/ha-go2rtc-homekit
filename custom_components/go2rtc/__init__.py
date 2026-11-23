@@ -4,10 +4,12 @@ from . import _testbuild  # noqa: F401  # isort: skip  # TEST BUILD ONLY, see _t
 
 from dataclasses import dataclass
 import logging
+import re
 from secrets import token_hex
 import shutil
 from tempfile import mkdtemp
 from typing import override
+from urllib.parse import quote
 
 from aiohttp import ClientSession, UnixConnector, encode_basic_auth
 from aiohttp.client_exceptions import ClientConnectionError, ServerConnectionError
@@ -68,6 +70,7 @@ from .const import (
     CONF_DEBUG_UI,
     DEBUG_UI_URL_MESSAGE,
     DOMAIN,
+    HA_MANAGED_RTSP_PORT,
     HA_MANAGED_URL,
     RECOMMENDED_VERSION,
 )
@@ -78,6 +81,8 @@ _LOGGER = logging.getLogger(__name__)
 
 _FFMPEG = "ffmpeg"
 _AUTH = "auth"
+# Mirrors go2rtc 1.9.15+, which masks the userinfo of URLs in its API responses
+_USERINFO = re.compile(r"://[A-Za-z0-9\-._~!$&'()*+,;=%:]+@")
 
 
 def _validate_auth(config: dict) -> dict:
@@ -314,6 +319,7 @@ class WebRTCProvider(CameraWebRTCProvider):
         self._rest_client = rest_client
         self._sessions: dict[str, _SessionInfo] = {}
         self._supported_schemes: set[str] = set()
+        self._added_stream_sources: dict[str, str] = {}
 
     @property
     @override
@@ -406,9 +412,22 @@ class WebRTCProvider(CameraWebRTCProvider):
         except Go2RtcClientError as err:
             raise HomeAssistantError("Unable to get image from go2rtc") from err
 
+    @override
+    async def async_get_stream_source(self, camera: Camera) -> str | None:
+        """Return go2rtc's RTSP restream of a camera without a stream source.
+
+        Only the go2rtc server Home Assistant manages has a known RTSP address.
+        The restream carries AAC audio, which HLS needs.
+        """
+        if self._url != HA_MANAGED_URL:
+            return None
+        await self._update_stream_source(camera)
+        identifier = quote(get_camera_identifier(camera), safe="")
+        return f"rtsp://127.0.0.1:{HA_MANAGED_RTSP_PORT}/{identifier}?video&audio=aac"
+
     async def _update_stream_source(self, camera: Camera) -> None:
         """Update the stream source in go2rtc config if needed."""
-        if not (stream_source := await camera.stream_source()):
+        if not (stream_source := await camera.webrtc_source()):
             await self._close_camera_sessions(camera)
             raise HomeAssistantError("Camera has no stream source")
 
@@ -448,23 +467,47 @@ class WebRTCProvider(CameraWebRTCProvider):
                 case Orientation.ROTATE_RIGHT:
                     stream_source += "#rotate=90"
 
+        sources = [
+            stream_source,
+            # We are setting any ffmpeg rtsp related logs to debug
+            # Connection problems to the camera will be
+            # logged by the first stream
+            # Therefore setting it to debug will not hide any important logs
+            f"ffmpeg:{get_camera_identifier(camera)}#audio=opus#query=log_level=debug",
+        ]
+        if await camera.stream_source() is None:
+            # The camera's source is native to go2rtc, so FFmpeg uses go2rtc's
+            # restream (async_get_stream_source). AAC audio for it is
+            # transcoded only while someone reads it.
+            sources.append(
+                f"ffmpeg:{get_camera_identifier(camera)}#audio=aac#query=log_level=debug"
+            )
+
+        # TEST BUILD ONLY: talk-back transcoder, see _testbuild.py
+        sources += _testbuild.extra_sources(stream_source, get_camera_identifier(camera))
+
         streams = await self._rest_client.streams.list()
         identifier = get_camera_identifier(camera)
 
         if (stream := streams.get(identifier)) is None or not any(
-            stream_source == producer.url for producer in stream.producers
+            self._is_added_stream_source(identifier, stream_source, producer.url)
+            for producer in stream.producers
         ):
-            await self._rest_client.streams.add(
-                identifier,
-                [
-                    stream_source,
-                    # We are setting any ffmpeg rtsp related logs to debug
-                    # Connection problems to the camera will be
-                    # logged by the first stream
-                    # Therefore setting it to debug will not hide any important logs
-                    f"ffmpeg:{identifier}#audio=opus#query=log_level=debug",
-                ],
-            )
+            await self._rest_client.streams.add(identifier, sources)
+            self._added_stream_sources[identifier] = stream_source
+
+    def _is_added_stream_source(
+        self, identifier: str, stream_source: str, producer_url: str
+    ) -> bool:
+        if producer_url == stream_source:
+            return True
+
+        # A masked URL hides credential changes, so it only counts when it
+        # belongs to the source we added last
+        if self._added_stream_sources.get(identifier) != stream_source:
+            return False
+
+        return producer_url == _USERINFO.sub("://***@", stream_source)
 
     async def _update_preload_stream(self, camera: Camera) -> None:
         identifier = get_camera_identifier(camera)
@@ -514,6 +557,7 @@ class WebRTCProvider(CameraWebRTCProvider):
         """Will be called when the provider is unregistered for a camera."""
         await self._close_camera_sessions(camera)
         identifier = get_camera_identifier(camera)
+        self._added_stream_sources.pop(identifier, None)
         if identifier in await self._rest_client.preload.list():
             await self._rest_client.preload.disable(identifier)
 

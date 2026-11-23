@@ -1,6 +1,6 @@
 {
   "name": "go2rtc with HomeKit cameras (test build)",
-  "homeassistant": "2026.11.2",
+  "homeassistant": "2026.11.3",
   "zip_release": true,
   "filename": "go2rtc.zip"
 }
