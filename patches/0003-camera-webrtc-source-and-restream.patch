@@ -1,8 +1,8 @@
 diff --git a/__init__.py b/__init__.py
-index 6d82cbc..f37e942 100644
+index 64d25df..9cfb278 100644
 --- a/__init__.py
 +++ b/__init__.py
-@@ -8,6 +8,7 @@ from secrets import token_hex
+@@ -9,6 +9,7 @@ from secrets import token_hex
  import shutil
  from tempfile import mkdtemp
  from typing import override
@@ -10,7 +10,7 @@ index 6d82cbc..f37e942 100644
  
  from aiohttp import ClientSession, UnixConnector, encode_basic_auth
  from aiohttp.client_exceptions import ClientConnectionError, ServerConnectionError
-@@ -68,6 +69,7 @@ from .const import (
+@@ -69,6 +70,7 @@ from .const import (
      CONF_DEBUG_UI,
      DEBUG_UI_URL_MESSAGE,
      DOMAIN,
@@ -18,7 +18,7 @@ index 6d82cbc..f37e942 100644
      HA_MANAGED_URL,
      RECOMMENDED_VERSION,
  )
-@@ -403,9 +405,24 @@ class WebRTCProvider(CameraWebRTCProvider):
+@@ -407,9 +409,22 @@ class WebRTCProvider(CameraWebRTCProvider):
          except Go2RtcClientError as err:
              raise HomeAssistantError("Unable to get image from go2rtc") from err
  
@@ -33,9 +33,7 @@ index 6d82cbc..f37e942 100644
 +            return None
 +        await self._update_stream_source(camera)
 +        identifier = quote(get_camera_identifier(camera), safe="")
-+        return (
-+            f"rtsp://127.0.0.1:{HA_MANAGED_RTSP_PORT}/{identifier}?video&audio=aac"
-+        )
++        return f"rtsp://127.0.0.1:{HA_MANAGED_RTSP_PORT}/{identifier}?video&audio=aac"
 +
      async def _update_stream_source(self, camera: Camera) -> None:
          """Update the stream source in go2rtc config if needed."""
@@ -44,7 +42,7 @@ index 6d82cbc..f37e942 100644
              await self._close_camera_sessions(camera)
              raise HomeAssistantError("Camera has no stream source")
  
-@@ -445,23 +462,29 @@ class WebRTCProvider(CameraWebRTCProvider):
+@@ -449,6 +464,22 @@ class WebRTCProvider(CameraWebRTCProvider):
                  case Orientation.ROTATE_RIGHT:
                      stream_source += "#rotate=90"
  
@@ -67,8 +65,9 @@ index 6d82cbc..f37e942 100644
          streams = await self._rest_client.streams.list()
          identifier = get_camera_identifier(camera)
  
-         if (stream := streams.get(identifier)) is None or not any(
-             stream_source == producer.url for producer in stream.producers
+@@ -456,17 +487,7 @@ class WebRTCProvider(CameraWebRTCProvider):
+             self._is_added_stream_source(identifier, stream_source, producer.url)
+             for producer in stream.producers
          ):
 -            await self._rest_client.streams.add(
 -                identifier,
@@ -82,9 +81,9 @@ index 6d82cbc..f37e942 100644
 -                ],
 -            )
 +            await self._rest_client.streams.add(identifier, sources)
+             self._added_stream_sources[identifier] = stream_source
  
-     async def _update_preload_stream(self, camera: Camera) -> None:
-         identifier = get_camera_identifier(camera)
+     def _is_added_stream_source(
 diff --git a/const.py b/const.py
 index eca2d24..0b21886 100644
 --- a/const.py
