@@ -1,5 +1,5 @@
 diff --git a/__init__.py b/__init__.py
-index 64d25df..9cfb278 100644
+index 64d25df..f7fe489 100644
 --- a/__init__.py
 +++ b/__init__.py
 @@ -9,6 +9,7 @@ from secrets import token_hex
@@ -18,7 +18,16 @@ index 64d25df..9cfb278 100644
      HA_MANAGED_URL,
      RECOMMENDED_VERSION,
  )
-@@ -407,9 +409,22 @@ class WebRTCProvider(CameraWebRTCProvider):
+@@ -78,6 +80,8 @@ from .util import get_camera_identifier, get_go2rtc_unix_socket_path
+ _LOGGER = logging.getLogger(__name__)
+ 
+ _FFMPEG = "ffmpeg"
++# go2rtc stream holding a camera's native source, when FFmpeg transforms it
++_NATIVE_SUFFIX = "_native"
+ _AUTH = "auth"
+ # Mirrors go2rtc 1.9.15+, which masks the userinfo of URLs in its API responses
+ _USERINFO = re.compile(r"://[A-Za-z0-9\-._~!$&'()*+,;=%:]+@")
+@@ -407,9 +411,29 @@ class WebRTCProvider(CameraWebRTCProvider):
          except Go2RtcClientError as err:
              raise HomeAssistantError("Unable to get image from go2rtc") from err
  
@@ -38,34 +47,80 @@ index 64d25df..9cfb278 100644
      async def _update_stream_source(self, camera: Camera) -> None:
          """Update the stream source in go2rtc config if needed."""
 -        if not (stream_source := await camera.stream_source()):
-+        if not (stream_source := await camera.webrtc_source()):
++        # Resolve each source once: the default webrtc_source is stream_source,
++        # which can be slow (e.g. it asks the camera for its URLs)
++        ffmpeg_source = await camera.stream_source()
++        if getattr(camera.webrtc_source, "__func__", None) is Camera.webrtc_source:
++            stream_source = ffmpeg_source
++        else:
++            stream_source = await camera.webrtc_source()
++        if not stream_source:
              await self._close_camera_sessions(camera)
              raise HomeAssistantError("Camera has no stream source")
  
-@@ -449,6 +464,22 @@ class WebRTCProvider(CameraWebRTCProvider):
+@@ -423,12 +447,32 @@ class WebRTCProvider(CameraWebRTCProvider):
+             await self._close_camera_sessions(camera)
+             raise HomeAssistantError("Stream source is not supported by go2rtc")
+ 
++        identifier = get_camera_identifier(camera)
++        backchannel_source: str | None = None
+         camera_prefs = await get_dynamic_camera_stream_settings(
+             self._hass, camera.entity_id
+         )
+         if camera_prefs.orientation is not Orientation.NO_TRANSFORM:
+             # Camera orientation manually set by user
+-            if not stream_source.startswith(_FFMPEG):
++            if ffmpeg_source is None:
++                # FFmpeg can't open a source native to go2rtc, so it reads
++                # go2rtc's restream of that source, kept as its own stream
++                native_identifier = f"{identifier}{_NATIVE_SUFFIX}"
++                await self._async_add_stream(
++                    native_identifier, stream_source, [stream_source]
++                )
++                stream_source = f"{_FFMPEG}:{native_identifier}"
++                if (
++                    self._url == HA_MANAGED_URL
++                    and camera.camera_entity_capabilities.two_way_audio
++                ):
++                    # FFmpeg only reads, so talk-back goes to the same native
++                    # session through go2rtc's RTSP backchannel
++                    backchannel_source = (
++                        f"rtsp://127.0.0.1:{HA_MANAGED_RTSP_PORT}/"
++                        f"{quote(native_identifier, safe='')}?backchannel=1"
++                    )
++            elif not stream_source.startswith(_FFMPEG):
+                 stream_source = _FFMPEG + ":" + stream_source
+             stream_source += "#video=h264#audio=copy"
+             match camera_prefs.orientation:
+@@ -449,24 +493,33 @@ class WebRTCProvider(CameraWebRTCProvider):
                  case Orientation.ROTATE_RIGHT:
                      stream_source += "#rotate=90"
  
 +        sources = [
 +            stream_source,
++            *([backchannel_source] if backchannel_source else []),
 +            # We are setting any ffmpeg rtsp related logs to debug
 +            # Connection problems to the camera will be
 +            # logged by the first stream
 +            # Therefore setting it to debug will not hide any important logs
-+            f"ffmpeg:{get_camera_identifier(camera)}#audio=opus#query=log_level=debug",
++            f"ffmpeg:{identifier}#audio=opus#query=log_level=debug",
 +        ]
-+        if await camera.stream_source() is None:
++        if ffmpeg_source is None:
 +            # The camera's source is native to go2rtc, so FFmpeg uses go2rtc's
 +            # restream (async_get_stream_source). AAC audio for it is
 +            # transcoded only while someone reads it.
-+            sources.append(
-+                f"ffmpeg:{get_camera_identifier(camera)}#audio=aac#query=log_level=debug"
-+            )
++            sources.append(f"ffmpeg:{identifier}#audio=aac#query=log_level=debug")
 +
++        await self._async_add_stream(identifier, stream_source, sources)
++
++    async def _async_add_stream(
++        self, identifier: str, stream_source: str, sources: list[str]
++    ) -> None:
++        """Add a stream to go2rtc unless it already has stream_source."""
          streams = await self._rest_client.streams.list()
-         identifier = get_camera_identifier(camera)
- 
-@@ -456,17 +487,7 @@ class WebRTCProvider(CameraWebRTCProvider):
+-        identifier = get_camera_identifier(camera)
+-
+         if (stream := streams.get(identifier)) is None or not any(
              self._is_added_stream_source(identifier, stream_source, producer.url)
              for producer in stream.producers
          ):
@@ -84,6 +139,14 @@ index 64d25df..9cfb278 100644
              self._added_stream_sources[identifier] = stream_source
  
      def _is_added_stream_source(
+@@ -531,6 +584,7 @@ class WebRTCProvider(CameraWebRTCProvider):
+         await self._close_camera_sessions(camera)
+         identifier = get_camera_identifier(camera)
+         self._added_stream_sources.pop(identifier, None)
++        self._added_stream_sources.pop(f"{identifier}{_NATIVE_SUFFIX}", None)
+         if identifier in await self._rest_client.preload.list():
+             await self._rest_client.preload.disable(identifier)
+ 
 diff --git a/const.py b/const.py
 index eca2d24..0b21886 100644
 --- a/const.py

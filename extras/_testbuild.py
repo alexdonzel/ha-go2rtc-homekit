@@ -20,10 +20,12 @@ Home Assistant ships. Delete each once it is released:
    async_get_stream_source() (proposed with the go2rtc changes in this build).
    A camera whose only source is native to go2rtc (HomeKit Controller's
    homekit://) gets live view through its WebRTC provider, and HLS through
-   the provider's RTSP restream. Core's camera integration can't be replaced
+   the provider's RTSP restream, set up again for a cached stream (e.g. after
+   a go2rtc restart). Core's camera integration can't be replaced
    by a custom copy, so these few functions are patched in here.
 """
 
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -39,6 +41,7 @@ from homeassistant.components.camera import (
     entity as camera_entity,
     webrtc as camera_webrtc,
 )
+from homeassistant.components.camera.const import CAMERA_STREAM_SOURCE_TIMEOUT
 from homeassistant.core import HomeAssistant
 
 from . import util
@@ -98,9 +101,20 @@ if not hasattr(CameraWebRTCProvider, "async_get_stream_source"):
     _create_stream = Camera.async_create_stream
 
     async def _async_create_stream(self: Camera) -> Any:
+        if self.stream is not None:
+            if (
+                getattr(self, "_testbuild_provider_stream", False)
+                and self.webrtc_provider is not None
+            ):
+                # The provider may have lost the restream, e.g. when its
+                # server restarted, so let it set the restream up again
+                async with asyncio.timeout(CAMERA_STREAM_SOURCE_TIMEOUT):
+                    source = await self.webrtc_provider.async_get_stream_source(self)  # type: ignore[attr-defined]
+                if source and source != self.stream.source:
+                    self.stream.update_source(source)
+            return await _create_stream(self)
         if (
-            self.stream is None
-            and self.webrtc_provider is not None
+            self.webrtc_provider is not None
             and await type(self).stream_source(self) is None
             and (source := await self.webrtc_provider.async_get_stream_source(self))  # type: ignore[attr-defined]
         ):
@@ -111,9 +125,11 @@ if not hasattr(CameraWebRTCProvider, "async_get_stream_source"):
             # Only for this call: the camera's own stream_source stays None
             self.stream_source = _source  # type: ignore[method-assign]
             try:
-                return await _create_stream(self)
+                stream = await _create_stream(self)
             finally:
                 del self.stream_source
+            self._testbuild_provider_stream = stream is not None  # type: ignore[attr-defined]
+            return stream
         return await _create_stream(self)
 
     Camera.async_create_stream = _async_create_stream  # type: ignore[method-assign]
