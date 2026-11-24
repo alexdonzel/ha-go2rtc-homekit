@@ -1,8 +1,8 @@
 diff --git a/__init__.py b/__init__.py
-index 9cfb278..b01ca2a 100644
+index a854c87..f482f75 100644
 --- a/__init__.py
 +++ b/__init__.py
-@@ -288,6 +288,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: Go2RtcConfigEntry) -> N
+@@ -300,6 +300,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: Go2RtcConfigEntry) -> N
  
  async def _get_binary(hass: HomeAssistant) -> str | None:
      """Return the binary path if found."""
@@ -13,18 +13,18 @@ index 9cfb278..b01ca2a 100644
  
  
 diff --git a/server.py b/server.py
-index 0f1df11..37da01b 100644
+index 625c184..5f3e0fb 100644
 --- a/server.py
 +++ b/server.py
-@@ -13,6 +13,7 @@ from go2rtc_client import Go2RtcRestClient
- from homeassistant.core import HomeAssistant
+@@ -14,6 +14,7 @@ from homeassistant.core import HomeAssistant
  from homeassistant.exceptions import HomeAssistantError
+ from homeassistant.helpers.dispatcher import async_dispatcher_send
  
 +from . import _testbuild
- from .const import HA_MANAGED_API_PORT, HA_MANAGED_RTSP_PORT, HA_MANAGED_URL
- from .util import get_go2rtc_unix_socket_path
- 
-@@ -173,6 +174,8 @@ def _create_temp_file(
+ from .const import (
+     HA_MANAGED_API_PORT,
+     HA_MANAGED_RTSP_PORT,
+@@ -179,6 +180,8 @@ def _create_temp_file(
                  rtsp_port=HA_MANAGED_RTSP_PORT,
              ).encode()
          )
