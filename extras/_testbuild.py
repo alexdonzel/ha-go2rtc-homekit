@@ -118,6 +118,11 @@ if not hasattr(CameraWebRTCProvider, "async_get_stream_source"):
     def _webrtc_source_changed(self: Camera) -> None:
         if self.webrtc_provider is not None:
             self.webrtc_provider.async_refresh_stream_source(self)  # type: ignore[attr-defined]
+        else:
+            # Without a source earlier, no provider was picked
+            self.hass.async_create_task(
+                self.async_refresh_providers(), f"{self.entity_id} refresh providers"
+            )
 
     Camera.async_webrtc_source_changed = _webrtc_source_changed  # type: ignore[attr-defined]
     CameraWebRTCProvider.async_get_stream_source = _provider_stream_source  # type: ignore[attr-defined]
