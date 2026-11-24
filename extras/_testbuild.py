@@ -124,9 +124,12 @@ if not hasattr(CameraWebRTCProvider, "async_get_stream_source"):
     async def _async_create_stream(self: Camera) -> Any:
         if self.stream is not None:
             if getattr(self, "_testbuild_provider_stream", False):
-                # The provider may have lost the restream, e.g. when its
-                # server restarted, so let it set the restream up again
-                if not (source := await _async_provider_stream_source(self)):
+                # The camera may have a source of its own by now. If not, the
+                # provider may have lost the restream, e.g. when its server
+                # restarted, so let it set the restream up again
+                if source := await type(self).stream_source(self):
+                    self._testbuild_provider_stream = False  # type: ignore[attr-defined]
+                elif not (source := await _async_provider_stream_source(self)):
                     # Stops the outputs but keeps the stream: a preloaded worker
                     # keeps running, so it resumes with the restream later
                     await self.stream.stop()
