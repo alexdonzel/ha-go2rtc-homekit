@@ -109,6 +109,17 @@ if not hasattr(CameraWebRTCProvider, "async_get_stream_source"):
         return None
 
     CameraWebRTCProvider.async_supports_stream_source = _provider_supports_stream_source  # type: ignore[attr-defined]
+
+    def _provider_refresh_stream_source(self: Any, camera: Camera) -> None:
+        return None
+
+    CameraWebRTCProvider.async_refresh_stream_source = _provider_refresh_stream_source  # type: ignore[attr-defined]
+
+    def _webrtc_source_changed(self: Camera) -> None:
+        if self.webrtc_provider is not None:
+            self.webrtc_provider.async_refresh_stream_source(self)  # type: ignore[attr-defined]
+
+    Camera.async_webrtc_source_changed = _webrtc_source_changed  # type: ignore[attr-defined]
     CameraWebRTCProvider.async_get_stream_source = _provider_stream_source  # type: ignore[attr-defined]
 
     _create_stream = Camera.async_create_stream
