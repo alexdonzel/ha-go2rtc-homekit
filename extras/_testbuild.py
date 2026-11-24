@@ -38,7 +38,9 @@ from mashumaro.codecs.basic import BasicDecoder
 
 from homeassistant.components.camera import Camera, CameraWebRTCProvider
 from homeassistant.components.camera import (
+    const as camera_const,
     entity as camera_entity,
+    media_source as camera_media_source,
     webrtc as camera_webrtc,
 )
 from homeassistant.components.camera.const import (
@@ -125,8 +127,9 @@ if not hasattr(CameraWebRTCProvider, "async_get_stream_source"):
                 # The provider may have lost the restream, e.g. when its
                 # server restarted, so let it set the restream up again
                 if not (source := await _async_provider_stream_source(self)):
+                    # Stops the outputs but keeps the stream: a preloaded worker
+                    # keeps running, so it resumes with the restream later
                     await self.stream.stop()
-                    self.stream = None
                     return None
                 if source != self.stream.source:
                     self.stream.update_source(source)
@@ -168,6 +171,43 @@ if not hasattr(CameraWebRTCProvider, "async_get_stream_source"):
         return capabilities
 
     Camera.camera_capabilities = property(_capabilities)  # type: ignore[assignment, method-assign]
+
+    # Media players get a camera without HLS through the MJPEG proxy, as they
+    # did before it had its own WebRTC source
+    _resolve_media = camera_media_source.CameraMediaSource.async_resolve_media
+    _browse_media = camera_media_source.CameraMediaSource.async_browse_media
+
+    async def _async_resolve_media(self: Any, item: Any) -> Any:
+        camera = self.hass.data[camera_const.DATA_COMPONENT].get_entity(item.identifier)
+        if (
+            camera is not None
+            and _has_own_webrtc_source(camera)
+            and StreamType.HLS not in camera.camera_capabilities.frontend_stream_types
+        ):
+            return camera_media_source.PlayMedia(
+                f"/api/camera_proxy_stream/{camera.entity_id}", camera.content_type
+            )
+        return await _resolve_media(self, item)
+
+    async def _async_browse_media(self: Any, item: Any) -> Any:
+        result = await _browse_media(self, item)
+        known = {child.identifier for child in result.children or []}
+        for camera in self.hass.data[camera_const.DATA_COMPONENT].entities:
+            if (
+                camera.entity_id not in known
+                and _has_own_webrtc_source(camera)
+                and StreamType.HLS not in camera.camera_capabilities.frontend_stream_types
+            ):
+                result.children.append(
+                    camera_media_source._media_source_for_camera(  # noqa: SLF001
+                        self.hass, camera, camera.content_type
+                    )
+                )
+                result.not_shown = max(0, result.not_shown - 1)
+        return result
+
+    camera_media_source.CameraMediaSource.async_resolve_media = _async_resolve_media  # type: ignore[method-assign]
+    camera_media_source.CameraMediaSource.async_browse_media = _async_browse_media  # type: ignore[method-assign]
 
 
 # Talk-back to AAC-ELD-only HomeKit cameras (e.g. Aqara G410) goes through a
