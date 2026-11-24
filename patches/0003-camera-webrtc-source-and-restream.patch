@@ -1,5 +1,5 @@
 diff --git a/__init__.py b/__init__.py
-index 64d25df..06e1029 100644
+index 64d25df..151e45e 100644
 --- a/__init__.py
 +++ b/__init__.py
 @@ -2,13 +2,18 @@
@@ -285,7 +285,7 @@ index 64d25df..06e1029 100644
              # Camera orientation manually set by user
              if not stream_source.startswith(_FFMPEG):
                  stream_source = _FFMPEG + ":" + stream_source
-@@ -449,25 +614,37 @@ class WebRTCProvider(CameraWebRTCProvider):
+@@ -449,25 +614,38 @@ class WebRTCProvider(CameraWebRTCProvider):
                  case Orientation.ROTATE_RIGHT:
                      stream_source += "#rotate=90"
  
@@ -300,9 +300,10 @@ index 64d25df..06e1029 100644
 +            f"ffmpeg:{identifier}#audio=opus#query=log_level=debug",
 +        ]
 +        aac_source = f"ffmpeg:{identifier}#audio=aac#query=log_level=debug"
-+        if ffmpeg_source is None:
-+            # FFmpeg reads go2rtc's restream instead (async_get_stream_source),
-+            # with AAC audio transcoded only while someone reads it
++        # FFmpeg reads go2rtc's restream instead (async_get_stream_source),
++        # with AAC audio transcoded only while someone reads it. A camera that
++        # gained a source of its own may still have a worker reading it.
++        if not ffmpeg_source or identifier in self._restreamed_cameras:
 +            sources.append(aac_source)
  
 -        if (stream := streams.get(identifier)) is None or not any(
@@ -328,7 +329,7 @@ index 64d25df..06e1029 100644
 +                for producer in stream.producers
              )
 -            self._added_stream_sources[identifier] = stream_source
-+            # The AAC transcode must follow whether FFmpeg reads the restream
++            # The AAC transcode must follow whether FFmpeg may read the restream
 +            or (aac_source in sources)
 +            != any(producer.url == aac_source for producer in stream.producers)
 +        ):
@@ -339,7 +340,7 @@ index 64d25df..06e1029 100644
  
      def _is_added_stream_source(
          self, identifier: str, stream_source: str, producer_url: str
-@@ -510,6 +687,11 @@ class WebRTCProvider(CameraWebRTCProvider):
+@@ -510,6 +688,11 @@ class WebRTCProvider(CameraWebRTCProvider):
  
      async def teardown(self) -> None:
          """Tear down the provider."""
@@ -351,7 +352,7 @@ index 64d25df..06e1029 100644
          while self._sessions:
              _, session_info = self._sessions.popitem()
              await session_info.ws_client.close()
-@@ -530,7 +712,12 @@ class WebRTCProvider(CameraWebRTCProvider):
+@@ -530,7 +713,12 @@ class WebRTCProvider(CameraWebRTCProvider):
          """Will be called when the provider is unregistered for a camera."""
          await self._close_camera_sessions(camera)
          identifier = get_camera_identifier(camera)
@@ -365,7 +366,7 @@ index 64d25df..06e1029 100644
          if identifier in await self._rest_client.preload.list():
              await self._rest_client.preload.disable(identifier)
  
-@@ -549,3 +736,4 @@ class Go2RtcConfig:
+@@ -549,3 +737,4 @@ class Go2RtcConfig:
  
      url: str
      session: ClientSession
