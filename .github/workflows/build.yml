@@ -48,6 +48,18 @@ jobs:
           tag=${{ steps.release.outputs.tag }}
           last=$(git tag --list "$tag.*" --sort=-v:refname | head -n1)
           build=$(( ${last##*.} + 1 ))
+          # A tag left without a release, e.g. when creating it failed, is
+          # built and released again
+          if [ -n "$last" ] && ! gh release view "$last" > /dev/null 2>&1; then
+            echo "Releasing $last, which has no release"
+            build=${last##*.}
+            echo "rerelease=true" >> "$GITHUB_OUTPUT"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "version=$last" >> "$GITHUB_OUTPUT"
+            python3 tools/build.py --tag "$tag" --build "$build"
+            cp go2rtc.ref custom_components/go2rtc/go2rtc.ref
+            exit 0
+          fi
           python3 tools/build.py --tag "$tag" --build "$build"
           # Record the go2rtc build, so a change to it counts as a change
           cp go2rtc.ref custom_components/go2rtc/go2rtc.ref
@@ -94,10 +106,12 @@ jobs:
           version=${{ steps.build.outputs.version }}
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add custom_components hacs.json
-          git commit -m "Build $version for Home Assistant ${{ steps.release.outputs.tag }}"
-          git tag "$version"
-          git push --atomic origin HEAD "$version"
+          if [ "${{ steps.build.outputs.rerelease }}" != "true" ]; then
+            git add custom_components hacs.json
+            git commit -m "Build $version for Home Assistant ${{ steps.release.outputs.tag }}"
+            git tag "$version"
+            git push --atomic origin HEAD "$version"
+          fi
           gh release create "$version" --title "$version" \
             --notes "Test build for Home Assistant ${{ steps.release.outputs.tag }}, with go2rtc from $(cat go2rtc.ref)." \
             dist/go2rtc.zip
