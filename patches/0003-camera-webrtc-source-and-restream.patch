@@ -1,5 +1,5 @@
 diff --git a/__init__.py b/__init__.py
-index 64d25df..cb97e4b 100644
+index 64d25df..ff9cf01 100644
 --- a/__init__.py
 +++ b/__init__.py
 @@ -2,13 +2,18 @@
@@ -17,7 +17,7 @@ index 64d25df..cb97e4b 100644
  import shutil
  from tempfile import mkdtemp
  from typing import override
-+from urllib.parse import quote, urlparse
++from urllib.parse import quote, unquote, urlparse
  
  from aiohttp import ClientSession, UnixConnector, encode_basic_auth
  from aiohttp.client_exceptions import ClientConnectionError, ServerConnectionError
@@ -336,7 +336,7 @@ index 64d25df..cb97e4b 100644
              # Camera orientation manually set by user
              if not stream_source.startswith(_FFMPEG):
                  stream_source = _FFMPEG + ":" + stream_source
-@@ -449,25 +656,82 @@ class WebRTCProvider(CameraWebRTCProvider):
+@@ -449,25 +656,86 @@ class WebRTCProvider(CameraWebRTCProvider):
                  case Orientation.ROTATE_RIGHT:
                      stream_source += "#rotate=90"
  
@@ -396,6 +396,9 @@ index 64d25df..cb97e4b 100644
              )
 -            self._added_stream_sources[identifier] = stream_source
 +        if add:
++            # Unknown until the write succeeds, as go2rtc may apply a write that
++            # fails here, so a retry always writes
++            self._added_sources.pop(identifier, None)
 +            await self._rest_client.streams.add(identifier, sources)
 +        # Also when go2rtc has the stream already, e.g. after a reload, so
 +        # later source changes reach it
@@ -423,7 +426,8 @@ index 64d25df..cb97e4b 100644
 +        if (
 +            url.scheme == "rtsp"
 +            and url.hostname in ("127.0.0.1", "localhost")
-+            and url.path == f"/{identifier}"
++            # The path is URL-escaped, e.g. % as %25
++            and unquote(url.path) == f"/{identifier}"
 +        ):
 +            return True
 +        # The input of an FFmpeg source, e.g. one transformed for orientation
@@ -435,7 +439,7 @@ index 64d25df..cb97e4b 100644
  
      def _is_added_stream_source(
          self, identifier: str, stream_source: str, producer_url: str
-@@ -510,6 +774,13 @@ class WebRTCProvider(CameraWebRTCProvider):
+@@ -510,6 +778,13 @@ class WebRTCProvider(CameraWebRTCProvider):
  
      async def teardown(self) -> None:
          """Tear down the provider."""
@@ -449,7 +453,7 @@ index 64d25df..cb97e4b 100644
          while self._sessions:
              _, session_info = self._sessions.popitem()
              await session_info.ws_client.close()
-@@ -530,7 +801,13 @@ class WebRTCProvider(CameraWebRTCProvider):
+@@ -530,7 +805,13 @@ class WebRTCProvider(CameraWebRTCProvider):
          """Will be called when the provider is unregistered for a camera."""
          await self._close_camera_sessions(camera)
          identifier = get_camera_identifier(camera)
@@ -464,7 +468,7 @@ index 64d25df..cb97e4b 100644
          if identifier in await self._rest_client.preload.list():
              await self._rest_client.preload.disable(identifier)
  
-@@ -549,3 +826,4 @@ class Go2RtcConfig:
+@@ -549,3 +830,4 @@ class Go2RtcConfig:
  
      url: str
      session: ClientSession
