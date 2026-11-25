@@ -146,8 +146,11 @@ if not hasattr(CameraWebRTCProvider, "async_get_stream_source"):
                 if source := await type(self).stream_source(self):
                     self._testbuild_provider_stream = False  # type: ignore[attr-defined]
                 elif not (source := await _async_provider_stream_source(self)):
-                    # Stops the outputs but keeps the stream: a preloaded worker
-                    # keeps running, so it resumes with the restream later
+                    # Ends the outputs as when they go idle, so a recording
+                    # finishes, but keeps the stream: a preloaded worker keeps
+                    # running, so it resumes with the restream later
+                    for output in list(self.stream.outputs().values()):
+                        await self.stream.remove_provider(output)
                     await self.stream.stop()
                     return None
                 if source != self.stream.source:
@@ -183,6 +186,7 @@ if not hasattr(CameraWebRTCProvider, "async_get_stream_source"):
             and StreamType.HLS in capabilities.frontend_stream_types
             and (
                 self.webrtc_provider is None
+                or "stream" not in self.hass.config.components
                 or not self.webrtc_provider.async_supports_stream_source(self)  # type: ignore[attr-defined]
             )
         ):
