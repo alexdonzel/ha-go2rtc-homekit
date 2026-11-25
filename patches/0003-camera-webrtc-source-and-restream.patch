@@ -1,5 +1,5 @@
 diff --git a/__init__.py b/__init__.py
-index 64d25df..151e45e 100644
+index 64d25df..95852d1 100644
 --- a/__init__.py
 +++ b/__init__.py
 @@ -2,13 +2,18 @@
@@ -129,7 +129,21 @@ index 64d25df..151e45e 100644
  
      @property
      @override
-@@ -407,11 +438,140 @@ class WebRTCProvider(CameraWebRTCProvider):
+@@ -330,7 +361,12 @@ class WebRTCProvider(CameraWebRTCProvider):
+     @override
+     def async_is_supported(self, stream_source: str) -> bool:
+         """Return if this provider is supports the Camera as source."""
+-        return stream_source.partition(":")[0] in self._supported_schemes
++        scheme = stream_source.partition(":")[0]
++        # A homekit:// source holds Home Assistant's pairing key for the
++        # accessory, so it only goes to the server Home Assistant manages
++        if scheme == "homekit" and not self._managed:
++            return False
++        return scheme in self._supported_schemes
+ 
+     @override
+     async def async_handle_async_webrtc_offer(
+@@ -407,11 +443,140 @@ class WebRTCProvider(CameraWebRTCProvider):
          except Go2RtcClientError as err:
              raise HomeAssistantError("Unable to get image from go2rtc") from err
  
@@ -271,7 +285,7 @@ index 64d25df..151e45e 100644
  
          if camera.platform.platform_name == "generic":
              # This is a workaround to use ffmpeg for generic cameras
-@@ -426,7 +586,12 @@ class WebRTCProvider(CameraWebRTCProvider):
+@@ -426,7 +591,12 @@ class WebRTCProvider(CameraWebRTCProvider):
          camera_prefs = await get_dynamic_camera_stream_settings(
              self._hass, camera.entity_id
          )
@@ -285,7 +299,7 @@ index 64d25df..151e45e 100644
              # Camera orientation manually set by user
              if not stream_source.startswith(_FFMPEG):
                  stream_source = _FFMPEG + ":" + stream_source
-@@ -449,25 +614,38 @@ class WebRTCProvider(CameraWebRTCProvider):
+@@ -449,25 +619,38 @@ class WebRTCProvider(CameraWebRTCProvider):
                  case Orientation.ROTATE_RIGHT:
                      stream_source += "#rotate=90"
  
@@ -340,7 +354,7 @@ index 64d25df..151e45e 100644
  
      def _is_added_stream_source(
          self, identifier: str, stream_source: str, producer_url: str
-@@ -510,6 +688,11 @@ class WebRTCProvider(CameraWebRTCProvider):
+@@ -510,6 +693,11 @@ class WebRTCProvider(CameraWebRTCProvider):
  
      async def teardown(self) -> None:
          """Tear down the provider."""
@@ -352,7 +366,7 @@ index 64d25df..151e45e 100644
          while self._sessions:
              _, session_info = self._sessions.popitem()
              await session_info.ws_client.close()
-@@ -530,7 +713,12 @@ class WebRTCProvider(CameraWebRTCProvider):
+@@ -530,7 +718,12 @@ class WebRTCProvider(CameraWebRTCProvider):
          """Will be called when the provider is unregistered for a camera."""
          await self._close_camera_sessions(camera)
          identifier = get_camera_identifier(camera)
@@ -366,7 +380,7 @@ index 64d25df..151e45e 100644
          if identifier in await self._rest_client.preload.list():
              await self._rest_client.preload.disable(identifier)
  
-@@ -549,3 +737,4 @@ class Go2RtcConfig:
+@@ -549,3 +742,4 @@ class Go2RtcConfig:
  
      url: str
      session: ClientSession
