@@ -48,10 +48,12 @@ jobs:
           tag=${{ steps.release.outputs.tag }}
           last=$(git tag --list "$tag.*" --sort=-v:refname | head -n1)
           build=$(( ${last##*.} + 1 ))
-          # A tag left without a release, e.g. when creating it failed, is
-          # built and released again
-          if [ -n "$last" ] && ! gh release view "$last" > /dev/null 2>&1; then
-            echo "Releasing $last, which has no release"
+          # A tag left without a published release, e.g. a draft left when
+          # creating it failed, is built and released again
+          if [ -n "$last" ] && [ "$(gh release view "$last" --json isDraft,assets \
+              --jq '.isDraft or (.assets | length == 0)' 2>/dev/null || echo true)" = "true" ]; then
+            echo "Releasing $last, which has no published release"
+            gh release delete "$last" --yes 2>/dev/null || true
             build=${last##*.}
             echo "rerelease=true" >> "$GITHUB_OUTPUT"
             echo "changed=true" >> "$GITHUB_OUTPUT"
